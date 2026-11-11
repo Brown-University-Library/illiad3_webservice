@@ -33,7 +33,7 @@ def run_checks(labels: list[str], check_only: bool, verbosity: int) -> None:
     with TemporaryDirectory(prefix='illiad-tests-') as temporary_directory, patch.dict(os.environ):
         ## Ignore inherited application settings.
         for key in list(os.environ):
-            if key.startswith('ILLIAD_WS__') or key == 'DJANGO_SETTINGS_MODULE':
+            if key.startswith('ILLIAD_WS__') or key in ('DJANGO_SETTINGS_MODULE', 'PYTHON_DOTENV_DISABLED'):
                 del os.environ[key]
         load_dotenv(Path(__file__).parent / '.env.example', override=True, interpolate=False)
         os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings'
@@ -45,6 +45,8 @@ def run_checks(labels: list[str], check_only: bool, verbosity: int) -> None:
         ## Keep Django startup from reading the outer directory's real .env.
         with patch('dotenv.load_dotenv', return_value=False), patch(
             'requests.sessions.Session.request', side_effect=RuntimeError('External HTTP is disabled in run_tests.py.')
+        ), patch(
+            'requests.sessions.Session.send', side_effect=RuntimeError('External HTTP is disabled in run_tests.py.')
         ):
             execute_from_command_line(command)
 

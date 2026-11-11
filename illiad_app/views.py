@@ -1,74 +1,72 @@
-# -*- coding: utf-8 -*-
+import datetime
+import json
+import logging
 
-import datetime, json, logging, os, pprint
 from django.conf import settings as project_settings
-from django.contrib.auth import logout
-from django.core.urlresolvers import reverse
-from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseNotFound, HttpResponseRedirect
-from django.shortcuts import get_object_or_404, render
+from django.http import HttpRequest, HttpResponse, HttpResponseBadRequest, HttpResponseNotFound
+
 from illiad_app.lib import info_helper
 from illiad_app.lib.cloud_api_check_user import CloudCheckUserHandler
 from illiad_app.lib.cloud_api_create_user import CloudCreateUserHandler
-from illiad_app.lib.cloud_book_request import BookRequestHandler
 from illiad_app.lib.cloud_article_request import ArticleRequestHandler
-
+from illiad_app.lib.cloud_book_request import BookRequestHandler
 
 log = logging.getLogger(__name__)
 
 
-def cloud_check_user( request ):
-    """ Handles checking a user's status -- meaing `registered`, `new-user`, `blocked`, `revoked`. """
+def cloud_check_user(request: HttpRequest) -> HttpResponse:
+    """Handles checking a user's status -- meaing `registered`, `new-user`, `blocked`, `revoked`."""
     rq_now = datetime.datetime.now()
     check_user_handler = CloudCheckUserHandler()
-    log.debug( '%s - starting' % check_user_handler.request_id )
-    if check_user_handler.data_check( request ) == 'invalid':
-        return HttpResponseBadRequest( 'Bad Request' )
-    result_data = check_user_handler.manage_check( request, rq_now )
-    output_dct = json.dumps( result_data, sort_keys=True, indent=2 )
-    return HttpResponse( output_dct, content_type='application/json; charset=utf-8' )
+    log.debug('%s - starting', check_user_handler.request_id)
+    if check_user_handler.data_check(request) == 'invalid':
+        return HttpResponseBadRequest(b'Bad Request')
+    result_data = check_user_handler.manage_check(request, rq_now)
+    output_dct = json.dumps(result_data, sort_keys=True, indent=2)
+    return HttpResponse(output_dct.encode(), content_type='application/json; charset=utf-8')
 
 
-def cloud_create_user( request ):
-    """ Handles new-user creation via official illiad-cloud-api."""
+def cloud_create_user(request: HttpRequest) -> HttpResponse:
+    """Handles new-user creation via official illiad-cloud-api."""
     # log.debug( 'request_dct, ```%s```' % pprint.pformat(request.__dict__) )
     rq_now = datetime.datetime.now()
     handler = CloudCreateUserHandler()
-    log.debug( '%s - starting' % handler.request_id )
-    if handler.data_check( request ) == 'invalid':
-        log.debug( 'returning `BadRequest` response' )
-        return HttpResponseBadRequest( 'Bad Request' )
-    result_data = handler.create_user( request )
-    output_dct = handler.prep_output_dct( rq_now, request, result_data )
-    output = json.dumps( output_dct, sort_keys=True, indent=2 )
-    return HttpResponse( output, content_type='application/json; charset=utf-8' )
+    log.debug('%s - starting', handler.request_id)
+    if handler.data_check(request) == 'invalid':
+        log.debug('returning `BadRequest` response')
+        return HttpResponseBadRequest(b'Bad Request')
+    result_data = handler.create_user(request)
+    output_dct = handler.prep_output_dct(rq_now, request, result_data)
+    output = json.dumps(output_dct, sort_keys=True, indent=2)
+    return HttpResponse(output.encode(), content_type='application/json; charset=utf-8')
 
 
-def cloud_book_request( request ):
-    """ Handles current (April 2019) easyBorrow controller illiad call -- via hitting ILLiad API. """
-    log.debug( 'starting book-request' )
-    log.debug( 'request.__dict__, `%s`' % pprint.pformat(request.__dict__) )
-    book_handler = BookRequestHandler( request.POST.get('request_id', 'no_id') )
-    if book_handler.check_validity( request ) is False:
-        return HttpResponseBadRequest( 'Bad Request' )
-    cloud_api_response_dct = book_handler.manage_request( request )
+def cloud_book_request(request: HttpRequest) -> HttpResponse:
+    """Handles current (April 2019) easyBorrow controller illiad call -- via hitting ILLiad API."""
+    log.debug('starting book-request')
+    book_handler = BookRequestHandler(request.POST.get('request_id', 'no_id'))
+    if book_handler.check_validity(request) is False:
+        return HttpResponseBadRequest(b'Bad Request')
+    cloud_api_response_dct = book_handler.manage_request(request)
     # output_dct = book_handler.prep_output_dct( rq_now, request, cloud_api_response_dct )  # future TODO
-    output_dct = book_handler.prepare_V2_output_dct( cloud_api_response_dct )  # this is compatible with the April 2019 format of the easyBorrow internal-illiad-api call
-    output = json.dumps( output_dct, sort_keys=True, indent=2 )
-    return HttpResponse( output, content_type='application/json; charset=utf-8' )
+    output_dct = book_handler.prepare_V2_output_dct(
+        cloud_api_response_dct
+    )  # this is compatible with the April 2019 format of the easyBorrow internal-illiad-api call
+    output = json.dumps(output_dct, sort_keys=True, indent=2)
+    return HttpResponse(output.encode(), content_type='application/json; charset=utf-8')
 
 
-def cloud_article_request( request ):
-    """ Handles current (April 2019) easyAccess article illiad call -- via hitting ILLiad API.
-        TO DO: get this working, then look for commonalities with book-requesting """
-    log.debug( 'starting article-request' )
-    log.debug( 'request.__dict__, `%s`' % pprint.pformat(request.__dict__) )
-    article_handler = ArticleRequestHandler( request.POST.get('request_id', 'no_id') )
-    if article_handler.check_validity( request ) is False:
-        return HttpResponseBadRequest( 'Bad Request' )
-    cloud_api_response_dct = article_handler.manage_request( request )
-    output_dct = article_handler.prep_output_dct( cloud_api_response_dct )
-    output = json.dumps( output_dct, sort_keys=True, indent=2 )
-    return HttpResponse( output, content_type='application/json; charset=utf-8' )
+def cloud_article_request(request: HttpRequest) -> HttpResponse:
+    """Handles current (April 2019) easyAccess article illiad call -- via hitting ILLiad API.
+    TO DO: get this working, then look for commonalities with book-requesting"""
+    log.debug('starting article-request')
+    article_handler = ArticleRequestHandler(request.POST.get('request_id', 'no_id'))
+    if article_handler.check_validity(request) is False:
+        return HttpResponseBadRequest(b'Bad Request')
+    cloud_api_response_dct = article_handler.manage_request(request)
+    output_dct = article_handler.prep_output_dct(cloud_api_response_dct)
+    output = json.dumps(output_dct, sort_keys=True, indent=2)
+    return HttpResponse(output.encode(), content_type='application/json; charset=utf-8')
 
 
 # ===========================
@@ -76,27 +74,31 @@ def cloud_article_request( request ):
 # ===========================
 
 
-def info( request ):
-    """ Returns basic data including branch & commit. """
-    log.debug( 'user-agent, ```%s```; ip, ```%s```; referrer, ```%s```' %
-        (request.META.get('HTTP_USER_AGENT', None), request.META.get('REMOTE_ADDR', None), request.META.get('HTTP_REFERER', None)) )
+def info(request: HttpRequest) -> HttpResponse:
+    """Returns basic data including branch & commit."""
+    log.debug(
+        'user-agent, ```%s```; ip, ```%s```; referrer, ```%s```',
+        request.META.get('HTTP_USER_AGENT', None),
+        request.META.get('REMOTE_ADDR', None),
+        request.META.get('HTTP_REFERER', None),
+    )
     rq_now = datetime.datetime.now()
     commit = info_helper.get_commit()
     branch = info_helper.get_branch()
-    info_txt = commit.replace( 'commit', branch )
+    info_txt = commit.replace('commit', branch)
     resp_now = datetime.datetime.now()
     taken = resp_now - rq_now
-    context_dct = info_helper.make_context( request, rq_now, info_txt, taken )
-    output = json.dumps( context_dct, sort_keys=True, indent=2 )
-    return HttpResponse( output, content_type='application/json; charset=utf-8' )
+    context_dct = info_helper.make_context(request, rq_now, info_txt, taken)
+    output = json.dumps(context_dct, sort_keys=True, indent=2)
+    return HttpResponse(output.encode(), content_type='application/json; charset=utf-8')
 
 
-def error_check( request ):
-    """ For checking that admins receive error-emails. """
-    if project_settings.DEBUG == True:
-        1/0
+def error_check(request: HttpRequest) -> HttpResponse:
+    """For checking that admins receive error-emails."""
+    if project_settings.DEBUG:
+        raise ZeroDivisionError('division by zero')
     else:
-        return HttpResponseNotFound( '<div>404 / Not Found</div>' )
+        return HttpResponseNotFound(b'<div>404 / Not Found</div>')
 
 
 # =========================
@@ -172,5 +174,3 @@ def error_check( request ):
 #     v2_response_dct = v2_helper.run_request( request )
 #     output = json.dumps( v2_response_dct, sort_keys=True, indent=2 )
 #     return HttpResponse( output, content_type='application/json; charset=utf-8' )
-
-
