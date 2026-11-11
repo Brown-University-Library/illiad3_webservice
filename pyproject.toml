@@ -1,0 +1,26 @@
+[project]
+name = "illiad3-webservice"
+version = "0.0.0"
+description = "Django API for ILLiad user and item requests."
+readme = "README.md"
+requires-python = "==3.8.20"
+dependencies = [
+    "Django==1.11.29",
+    "PyMySQL==0.9.3",
+    "python-dotenv==1.0.1",
+    "requests==2.22.0",
+]
+
+[dependency-groups]
+local = []
+staging = []
+prod = []
+
+[tool.uv]
+package = false
+
+[tool.pyright]
+pythonVersion = "3.8"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"

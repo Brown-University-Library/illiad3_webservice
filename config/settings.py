@@ -1,17 +1,16 @@
-# -*- coding: utf-8 -*-
+import json
+import os
+from pathlib import Path
 
-import json, os
+from dotenv import load_dotenv
 
 """
-Django settings for django_template_project.
-
-Environmental variables triggered in project's env_min_djng/bin/activate, when using runserver,
-  or env_min_djng/bin/activate_this.py, when using apache via passenger.
+Django settings for the ILLiad webservice.
 """
-
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+BASE_DIR = str(Path(__file__).resolve().parent.parent)
+load_dotenv(Path(BASE_DIR).parent / '.env', override=True, interpolate=False)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/1.8/howto/deployment/checklist/
@@ -127,7 +126,7 @@ LOGGING = {
         'logfile': {
             'level':'DEBUG',
             'class':'logging.FileHandler',  # note: configure server to use system's log-rotate to avoid permissions issues
-            'filename': os.environ.get(u'ILLIAD_WS__LOG_PATH'),
+            'filename': os.environ.get('ILLIAD_WS__LOG_PATH'),
             'formatter': 'standard',
         },
         'console':{
@@ -149,7 +148,7 @@ LOGGING = {
         },
         'illiad_app': {
             'handlers': ['logfile'],
-            'level': os.environ.get(u'ILLIAD_WS__LOG_LEVEL'),
+            'level': os.environ.get('ILLIAD_WS__LOG_LEVEL'),
             'propagate': False
         },
     }
