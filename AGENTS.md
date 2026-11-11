@@ -21,7 +21,8 @@ If other instruction files exist (Copilot, IDE rules, contributor docs) and conf
 ## Project basics
 
 - Primary language: Python
-- Target runtime: Python 3.8.20, pinned in `pyproject.toml`
+- Target runtime: Python 3.12, with `requires-python = ">=3.12,<3.13"` in `pyproject.toml`
+- Django version: stay within the 5.2 series and use the latest compatible patch release when updating dependencies.
 - Dependency / execution tool: `uv`
 - Project-root is the directory containing this file (and `.git/`, and `.gitignore`).
 - NEVER include full server filesystem paths in documentation, examples, or agent notes. Use relative paths or variable names instead.
@@ -43,9 +44,8 @@ If other instruction files exist (Copilot, IDE rules, contributor docs) and conf
 
 ### Type hints and imports
 
-- Use Python 3.8-compatible type hints for new functions and important variables.
-- Use `from __future__ import annotations` with builtin generic annotations such as `list[str]` so they work on Python 3.8. Use `typing` forms when annotations must be evaluated at runtime.
-- Use `typing.Optional` or `typing.Union`; the `X | Y` annotation syntax requires newer Python.
+- Use Python 3.12-compatible type hints for new functions and important variables.
+- Use builtin generic annotations such as `list[str]` and `X | None` for optional values. Use `from __future__ import annotations` when postponed annotation evaluation is useful.
 - Keep annotations simple and check explicitly for `None` where needed.
 
 ### Script structure
@@ -72,6 +72,7 @@ If other instruction files exist (Copilot, IDE rules, contributor docs) and conf
 
 - Use `httpx` for all HTTP calls.
 - Do not introduce alternate HTTP libraries (e.g., `requests`, `aiohttp`) unless the repository already depends on them and there is a documented reason.
+- Existing ILLiad and bibliographic-service integrations retain `requests` to preserve their request handling. Keep the isolated test runner's network blocking in step with any HTTP-library change.
 
 ### Docstrings
 
@@ -178,5 +179,5 @@ When implementing a change (especially from an issue/task):
 - `illiad_app/tests/`: mapping tests and client tests; some client tests contact external services when run directly through Django.
 - `.env.example`: dummy local settings; never put real operational values in tracked files.
 - `config/requirements.txt`: retained historical declarations. Use `pyproject.toml` and `uv.lock` for installation.
-- Keep the four directly used packages in `pyproject.toml`; supporting dependencies are recorded in `uv.lock`. Preserve current versions unless a version update is requested.
+- `pyproject.toml` declares Django, requests, PyMySQL, python-dotenv, and the explicit `certifi>=2026.10.19` requirement. Supporting dependencies and exact resolved versions are recorded in `uv.lock`. Preserve the Python 3.12 and Django 5.2 bounds and do not lower the certifi minimum without an explicit request.
 - Before finishing Python changes, run Ruff and Pylance or Pyright with `.venv` and the settings in `pyproject.toml`. Fix diagnostics in changed files without suppressing rules.
