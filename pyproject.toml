@@ -3,12 +3,13 @@ name = "illiad3-webservice"
 version = "0.0.0"
 description = "Django API for ILLiad user and item requests."
 readme = "README.md"
-requires-python = "==3.8.20"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-    "Django==1.11.29",
-    "PyMySQL==0.9.3",
-    "python-dotenv==1.0.1",
-    "requests==2.22.0",
+    "Django>=5.2.19,<5.3",
+    "PyMySQL[rsa]>=1.2.4,<2",
+    "certifi>=2026.10.19",
+    "python-dotenv>=1.2.4,<2",
+    "requests>=2.34.2,<3",
 ]
 
 [dependency-groups]
@@ -20,7 +21,7 @@ prod = []
 package = false
 
 [tool.pyright]
-pythonVersion = "3.8"
+pythonVersion = "3.12"
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "basic"

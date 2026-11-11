@@ -13,7 +13,7 @@ BASE_DIR = str(Path(__file__).resolve().parent.parent)
 load_dotenv(Path(BASE_DIR).parent / '.env', override=True, interpolate=False)
 
 # Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/1.8/howto/deployment/checklist/
+# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ['ILLIAD_WS__SECRET_KEY']
@@ -22,8 +22,6 @@ SECRET_KEY = os.environ['ILLIAD_WS__SECRET_KEY']
 temp_DEBUG = json.loads( os.environ['ILLIAD_WS__DEBUG_JSON'] )
 assert temp_DEBUG in [ True, False ], Exception( 'DEBUG env setting is, "%s"' )
 DEBUG = temp_DEBUG
-
-TEMPLATE_DEBUG = DEBUG
 
 ADMINS = json.loads( os.environ['ILLIAD_WS__ADMINS_JSON'] )
 
@@ -43,14 +41,21 @@ INSTALLED_APPS = (
     'illiad_app',
 )
 
-MIDDLEWARE_CLASSES = (
+MIDDLEWARE = (
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    # 'django.middleware.csrf.CsrfViewMiddleware',
+    # Existing API callers authenticate without browser CSRF tokens.
+    # Keep this API's middleware behavior; no admin URL is exposed.
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'illiad_app.middleware.FormEncodingMiddleware',
 )
+
+# Preserve Django 1.11's framing and trailing-slash behavior for existing callers.
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+APPEND_SLASH = True
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 ROOT_URLCONF = 'config.urls'
 
@@ -58,7 +63,7 @@ WSGI_APPLICATION = 'config.passenger_wsgi.application'
 
 
 # Database
-# https://docs.djangoproject.com/en/1.8/ref/settings/#databases
+# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
     'default': {
@@ -73,7 +78,7 @@ DATABASES = {
 
 
 # Internationalization
-# https://docs.djangoproject.com/en/1.8/topics/i18n/
+# https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
 
@@ -81,13 +86,11 @@ TIME_ZONE = 'America/New_York'
 
 USE_I18N = True
 
-USE_L10N = True
-
 USE_TZ = False
 
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/1.8/howto/static-files/
+# https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = os.environ['ILLIAD_WS__STATIC_URL']
 STATIC_ROOT = os.environ['ILLIAD_WS__STATIC_ROOT']  # needed for collectstatic command
@@ -95,7 +98,21 @@ STATIC_ROOT = os.environ['ILLIAD_WS__STATIC_ROOT']  # needed for collectstatic c
 
 # Templates
 
-TEMPLATE_DIRS = json.loads( os.environ['ILLIAD_WS__TEMPLATE_DIRS'] )  # list
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': json.loads(os.environ['ILLIAD_WS__TEMPLATE_DIRS']),
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
 
 
 # Email
@@ -106,7 +123,7 @@ EMAIL_PORT = int( os.environ['ILLIAD_WS__EMAIL_PORT'] )
 
 # sessions
 
-# <https://docs.djangoproject.com/en/1.8/ref/settings/#std:setting-SESSION_SAVE_EVERY_REQUEST>
+# <https://docs.djangoproject.com/en/5.2/ref/settings/#std:setting-SESSION_SAVE_EVERY_REQUEST>
 # Thinking: not that many concurrent users, and no pages where session info isn't required, so overhead is reasonable.
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True

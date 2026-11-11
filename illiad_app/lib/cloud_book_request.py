@@ -1,19 +1,22 @@
-# -*- coding: utf-8 -*-
 
 """
 Submits ILLiad request via hitting the ILLiad API instead of simulating browser GETs and POSTs.
 Implemented in preparation for ILLiad cloud switch-over.
 """
 
-import datetime, logging, pprint, random, time, unicodedata, urllib.parse
-import requests
-from illiad_app import settings_app
+import logging
+import pprint
+import unicodedata
+import urllib.parse
 
+import requests
+
+from illiad_app import settings_app
 
 log = logging.getLogger(__name__)
 
 
-class BookRequestHandler( object ):
+class BookRequestHandler:
     """ `Book` hardcoded for now, for easyBorrow requests.
         Will later do the `Article` manager for easyAccess requests, and then refactor for common features. """
 
@@ -25,29 +28,27 @@ class BookRequestHandler( object ):
     def check_validity( self, request ):
         """ Checks post, auth_key, ip, & params.
             Called by views.cloud_book_request() """
-        log.debug( '%s - starting check_validity()' % self.request_id )
+        log.debug( '%s - starting check_validity()', self.request_id )
         return_val = False
-        if request.method == 'POST':
-            if self.check_params( request ) is True:
-                if request.POST['auth_key'] == self.API_KEY:
-                    return_val = True
-                else:
-                    log.debug( '%s - ip, `%s`' % (self.request_id, request.META.get('REMOTE_ADDR', 'unavailable')) )
-        log.debug( '%s - return_val, `%s`' % (self.request_id, return_val) )
+        if request.method == 'POST' and self.check_params(request) is True:
+            if request.POST['auth_key'] == self.API_KEY:
+                return_val = True
+            else:
+                log.debug('%s - ip, `%s`', self.request_id, request.META.get('REMOTE_ADDR', 'unavailable'))
+        log.debug( '%s - return_val, `%s`', self.request_id, return_val )
         return return_val
 
     def check_params( self, request ):
         """ Checks params.
             Called by check_validity() """
-        log.debug( '%s - request.POST, `%s`' % (self.request_id, request.POST) )
         return_val = None
         for param in [ 'auth_key', 'openurl', 'request_id', 'username' ]:
-            log.debug( '%s - on param, `%s`' % (self.request_id, param) )
-            if param not in request.POST.keys():
+            log.debug( '%s - on param, `%s`', self.request_id, param )
+            if param not in request.POST:
                 return_val = False
                 break
-        return_val = True if ( return_val is None ) else False
-        log.debug( '%s - return_val, `%s`' % (self.request_id, return_val) )
+        return_val = return_val is None
+        log.debug( '%s - return_val, `%s`', self.request_id, return_val )
         return return_val
 
     def manage_request( self, request):
@@ -56,7 +57,6 @@ class BookRequestHandler( object ):
             - Submits request to illiad-cloud-api transaction endpoint.
             - Prepares response.
             Called by views.cloud_book_request() """
-        output_dct = { 'status': None, 'transaction_number': None, 'raw_data': None }
         param_builder = ILLiadParamBuilder( self.request_id )
         open_url_params = param_builder.parse_openurl( request.POST['openurl'] )
         full_illiad_params = self.add_additional_params( open_url_params, request.POST['username'] )
@@ -71,7 +71,7 @@ class BookRequestHandler( object ):
         param_dct['RequestType'] = 'Loan'
         param_dct['ProcessType'] = 'Borrowing'
         param_dct['Username'] = username
-        log.debug( '%s - updated param_dct, ```%s```' % (self.request_id, pprint.pformat(param_dct)) )
+        log.debug( '%s - updated param_dct, ```%s```', self.request_id, pprint.pformat(param_dct) )
         return param_dct
 
     def submit_transaction( self, param_dct ):
@@ -82,18 +82,18 @@ class BookRequestHandler( object ):
             r = requests.post( url, data=param_dct, headers=headers, timeout=30, verify=True )
             response_dct = r.json()
             response_dct['added_status_code'] = r.status_code
-            log.debug( '%s - response, ```%s```' % (self.request_id, pprint.pformat(response_dct)) )
+            log.debug( '%s - response, ```%s```', self.request_id, pprint.pformat(response_dct) )
             return response_dct
         except Exception as e:
-            message = 'exception submitting book transaction, ```%s```' % repr(e)
-            log.error( '%s - ```%s```' % (self.request_id, message) )
+            message = f'exception submitting book transaction, ```{e!r}```'
+            log.exception('%s - ```%s```', self.request_id, message)
             return { 'error': message }
 
     def prepare_submit_request( self ):
         """ Sets url & headers.
             Called by submit_transaction() """
-        url = '%s%s' % ( settings_app.ILLIAD_API_URL, 'transaction' )  # root url contains ending-slash
-        log.debug( '%s - url, ```%s```' % (self.request_id, url) )
+        url = f'{settings_app.ILLIAD_API_URL}transaction'  # root url contains ending-slash
+        log.debug( '%s - url, ```%s```', self.request_id, url )
         headers = {
             'Accept-Type': 'application/json; charset=utf-8',
             'ApiKey': settings_app.ILLIAD_API_KEY }
@@ -104,15 +104,15 @@ class BookRequestHandler( object ):
             TODO: at some point, update to the more modern api-response format, and update easyBorrow accordingly to handle it.
             Called by views.cloud_book_request() """
         v2_response_dct = { 'status': 'submission_failed', 'message': 'see illiad-webservice logs for more info' }
-        if 'TransactionNumber' in cloud_api_response_dct.keys():
+        if 'TransactionNumber' in cloud_api_response_dct:
             v2_response_dct = { 'status': 'submission_successful', 'transaction_number': cloud_api_response_dct['TransactionNumber'] }
-        log.debug( '%s - v2_response_dct, ```%s```' % (self.request_id, v2_response_dct) )
+        log.debug( '%s - v2_response_dct, ```%s```', self.request_id, v2_response_dct )
         return v2_response_dct
 
     ## end class BookRequestHandler()
 
 
-class ILLiadParamBuilder( object ):
+class ILLiadParamBuilder:
     """ Handles conversion of openurl and mapping to illiad-cloud-api keys. """
 
     def __init__( self, request_id ):
@@ -123,24 +123,24 @@ class ILLiadParamBuilder( object ):
     def parse_openurl( self, openurl ):
         """ Prepares ILLiad-compatible params.
             Called by BookRequestHandler.manage_request() """
-        log.debug( '%s - initial openurl, ```%s```' % (self.request_id, openurl) )
+        log.debug( '%s - initial openurl, ```%s```', self.request_id, openurl )
         decoded_openurl_querystring = self.decode_openurl_querystring( openurl )
         params = { 'ourl': decoded_openurl_querystring }
         r = requests.get( self.OURL_API_URL, params=params, timeout=30, verify=True )
-        log.debug( '%s - full url, ```%s```' % (self.request_id, r.url) )
-        log.debug( '%s - status_code, `%s`' % (self.request_id, r.status_code) )
+        log.debug( '%s - full url, ```%s```', self.request_id, r.url )
+        log.debug( '%s - status_code, `%s`', self.request_id, r.status_code )
         bib_json_dct = r.json()
-        log.debug( '%s - bib-dct, ```%s```' % (self.request_id, pprint.pformat(bib_json_dct)) )
+        log.debug( '%s - bib-dct, ```%s```', self.request_id, pprint.pformat(bib_json_dct) )
         notes = self.extract_notes( decoded_openurl_querystring )
         illiad_params = self.map_to_illiad_keys( bib_json_dct, notes )
-        log.debug( '%s - illiad_params from openurl, ```%s`' % (self.request_id, pprint.pformat(illiad_params)) )
+        log.debug( '%s - illiad_params from openurl, ```%s`', self.request_id, pprint.pformat(illiad_params) )
         return illiad_params
 
     def decode_openurl_querystring( self, querystring ):
         """ Runs one decode on the querystring.
             Called by parse_openurl() """
         decoded_querystring = urllib.parse.unquote( querystring )
-        log.debug( '%s - decoded_querystring, ```%s```' % (self.request_id, decoded_querystring) )
+        log.debug( '%s - decoded_querystring, ```%s```', self.request_id, decoded_querystring )
         return decoded_querystring
 
     ## KEEP this commented-out function in case we determine we need to further decode the querystring
@@ -164,10 +164,10 @@ class ILLiadParamBuilder( object ):
             Called by parse_openurl() """
         notes = 'no notes'
         parts_dct = urllib.parse.parse_qs( decoded_openurl_querystring )  # <https://pymotw.com/3/urllib.parse/>
-        log.debug( '%s - parts_dct, ```%s```' % (self.request_id, pprint.pformat(parts_dct)) )
-        if 'notes' in parts_dct.keys():
+        log.debug( '%s - parts_dct, ```%s```', self.request_id, pprint.pformat(parts_dct) )
+        if 'notes' in parts_dct:
             notes = parts_dct['notes'][0]  # all values are in list
-        log.debug( '%s - notes, ```%s```' % (self.request_id, notes) )
+        log.debug( '%s - notes, ```%s```', self.request_id, notes )
         return notes
 
     def map_to_illiad_keys( self, bib_json_dct, notes ):
@@ -191,15 +191,15 @@ class ILLiadParamBuilder( object ):
             'LoanPublisher': mapper.grab_publisher( bib_json_dct ),
             'LoanTitle': mapper.grab_title( bib_json_dct ),
             # 'Notes': notes,
-            'CitedTitle': 'NOTES: %s' % notes  # work-around due to the fact that I can't submit Notes directly within this transaction
+            'CitedTitle': f'NOTES: {notes}'  # work-around due to the fact that I can't submit Notes directly within this transaction
             }
-        log.debug( '%s - illiad_dct, ```%s```' % (self.request_id, pprint.pformat(item)) )
+        log.debug( '%s - illiad_dct, ```%s```', self.request_id, pprint.pformat(item) )
         return item
 
     ## end class ILLiadParamBuilder()
 
 
-class Mapper( object ):
+class Mapper:
     """ Extracts necessary values from bib_dct.
         Truncates data if necessary.
         - field lengths from <https://support.atlas-sys.com/hc/en-us/articles/360011812074> (scroll down to 'Transactions' table )
@@ -218,9 +218,9 @@ class Mapper( object ):
             sid = bib_dct['response']['bib']['_rfr']
             if sid is None:
                 sid = self.check_openurl_for_sid( bib_dct )
-        except Exception as e:
-            log.error( '%s - repr(e)' )
-        log.debug( '%s - sid, `%s`' % (self.request_id, sid) )
+        except Exception:
+            log.exception('Unable to map response field for request, ``%s``', self.request_id)
+        log.debug( '%s - sid, `%s`', self.request_id, sid )
         return sid
 
     def check_openurl_for_sid( self, bib_dct ):
@@ -228,12 +228,12 @@ class Mapper( object ):
             Called by grab_sid() """
         sid = ''
         parts_dct = urllib.parse.parse_qs( bib_dct['response']['decoded_openurl'] )
-        for key in parts_dct.keys():
+        for key in parts_dct:
             if 'sid' in key:
                 sid = parts_dct[key][0]
         if sid is None:
             sid = ''
-        log.debug( '%s - sid from openurl-check, `%s`' % (self.request_id, sid) )
+        log.debug( '%s - sid from openurl-check, `%s`', self.request_id, sid )
         return sid
 
     def grab_espn( self, bib_dct ):
@@ -246,10 +246,10 @@ class Mapper( object ):
                 if element_dct['type'] == 'oclc':
                     oclc = element_dct['id']
                     break
-        except Exception as e:
-            log.error( '%s - repr(e)' )
+        except Exception:
+            log.exception('Unable to map response field for request, ``%s``', self.request_id)
         oclc = self.check_limit( string_value=oclc, limit=32 )
-        log.debug( '%s - oclc, `%s`' % (self.request_id, oclc) )
+        log.debug( '%s - oclc, `%s`', self.request_id, oclc )
         return oclc
 
     def grab_isbn( self, bib_dct ):
@@ -262,10 +262,10 @@ class Mapper( object ):
                 if element_dct['type'] == 'isbn':
                     isbn = element_dct['id']
                     break
-        except Exception as e:
-            log.error( '%s - repr(e)' )
+        except Exception:
+            log.exception('Unable to map response field for request, ``%s``', self.request_id)
         isbn = self.check_limit( string_value=isbn, limit=20 )
-        log.debug( '%s - isbn, `%s`' % (self.request_id, isbn) )
+        log.debug( '%s - isbn, `%s`', self.request_id, isbn )
         return isbn
 
     def grab_author( self, bib_dct ):
@@ -275,12 +275,12 @@ class Mapper( object ):
         try:
             authors = bib_dct['response']['bib']['author']
             for element_dct in authors:
-                if 'name' in element_dct.keys():
+                if 'name' in element_dct:
                     author = element_dct['name']
-        except Exception as e:
-            log.error( '%s - repr(e)' )
+        except Exception:
+            log.exception('Unable to map response field for request, ``%s``', self.request_id)
         author = self.check_limit( string_value=author, limit=100 )
-        log.debug( '%s - author, `%s`' % (self.request_id, author) )
+        log.debug( '%s - author, `%s`', self.request_id, author )
         return author
 
     def grab_date( self, bib_dct ):
@@ -289,10 +289,10 @@ class Mapper( object ):
         date = ''
         try:
             date = bib_dct['response']['bib']['year']
-        except Exception as e:
-            log.error( '%s - repr(e)' )
+        except Exception:
+            log.exception('Unable to map response field for request, ``%s``', self.request_id)
         date = self.check_limit( string_value=date, limit=30 )
-        log.debug( '%s - date, `%s`' % (self.request_id, date) )
+        log.debug( '%s - date, `%s`', self.request_id, date )
         return date
 
     def grab_place( self, bib_dct ):
@@ -303,10 +303,10 @@ class Mapper( object ):
             place = bib_dct['response']['bib']['place_of_publication']
             if place is None:
                 place = ''
-        except Exception as e:
-            log.error( '%s - repr(e)' )
+        except Exception:
+            log.exception('Unable to map response field for request, ``%s``', self.request_id)
         place = self.check_limit( string_value=place, limit=30 )
-        log.debug( '%s - place, `%s`' % (self.request_id, place) )
+        log.debug( '%s - place, `%s`', self.request_id, place )
         return place
 
     def grab_publisher( self, bib_dct ):
@@ -317,10 +317,10 @@ class Mapper( object ):
             publisher = bib_dct['response']['bib']['publisher']
             if publisher is None:
                 publisher = ''
-        except Exception as e:
-            log.error( '%s - repr(e)' )
+        except Exception:
+            log.exception('Unable to map response field for request, ``%s``', self.request_id)
         publisher = self.check_limit( string_value=publisher, limit=50 )
-        log.debug( '%s - publisher, `%s`' % (self.request_id, publisher) )
+        log.debug( '%s - publisher, `%s`', self.request_id, publisher )
         return publisher
 
     def grab_title( self, bib_dct ):
@@ -331,10 +331,10 @@ class Mapper( object ):
             title = bib_dct['response']['bib']['title']
             if title is None:
                 title = ''
-        except Exception as e:
-            log.error( '%s - repr(e)' )
+        except Exception:
+            log.exception('Unable to map response field for request, ``%s``', self.request_id)
         title = self.check_limit( string_value=title, limit=255 )
-        log.debug( '%s - title, `%s`' % (self.request_id, title) )
+        log.debug( '%s - title, `%s`', self.request_id, title )
         return title
 
     def check_limit( self, string_value, limit ):
@@ -343,9 +343,9 @@ class Mapper( object ):
         checked_value = string_value
         elip = unicodedata.normalize( 'NFC', '…' ); assert len(elip) == 1  # to make explicit it's one-character
         if len( checked_value ) > limit:
-            checked_value = '%s%s' % ( checked_value[0:limit-1], elip )
-            log.debug( '%s - string value updated; was, ```%s```; now, ```%s```' % (self.request_id, string_value, checked_value) )
-        log.debug( '%s - returning string-value, ```%s```' % (self.request_id, checked_value) )
+            checked_value = f'{checked_value[0:limit-1]}{elip}'
+            log.debug( '%s - string value updated; was, ```%s```; now, ```%s```', self.request_id, string_value, checked_value )
+        log.debug( '%s - returning string-value, ```%s```', self.request_id, checked_value )
         return checked_value
 
     ## end class Mapper()

@@ -8,11 +8,13 @@ import base64
 import json
 import os
 from collections.abc import Mapping
+from itertools import product
 from unittest.mock import ANY, patch
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
+from django.core.exceptions import BadRequest
 from django.http import HttpResponse
-from django.test import Client, SimpleTestCase
+from django.test import Client, SimpleTestCase, override_settings
 from requests import Response
 
 from illiad_app import settings_app
@@ -112,17 +114,19 @@ class RequestFlowTests(SimpleTestCase):
         self.http_post.side_effect = None
         self.http_post.return_value = json_reply({'TransactionNumber': 12345})
 
-        response = self.client.post(
-            '/v2/make_request/',
-            {
-                'auth_key': 'test-internal-key',
-                'openurl': quote(openurl, safe=''),
-                'request_id': 'test-book',
-                'username': 'test-reader',
-            },
-        )
+        with self.assertLogs('illiad_app', level='DEBUG') as captured:
+            response = self.client.post(
+                '/v2/make_request/',
+                {
+                    'auth_key': 'test-internal-key',
+                    'openurl': quote(openurl, safe=''),
+                    'request_id': 'test-book',
+                    'username': 'test-reader',
+                },
+            )
 
         assert isinstance(response, HttpResponse)
+        self.assertNotIn('test-internal-key', '\n'.join(captured.output))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'].split(';')[0], 'application/json')
         self.assertEqual(json.loads(response.content), {'status': 'submission_successful', 'transaction_number': 12345})
@@ -172,17 +176,19 @@ class RequestFlowTests(SimpleTestCase):
         self.http_post.side_effect = None
         self.http_post.return_value = json_reply({'TransactionNumber': 67890})
 
-        response = self.client.post(
-            '/request_article/',
-            {
-                'auth_key': 'test-internal-key',
-                'openurl': quote(openurl, safe=''),
-                'request_id': 'test-article',
-                'username': 'test-reader',
-            },
-        )
+        with self.assertLogs('illiad_app', level='DEBUG') as captured:
+            response = self.client.post(
+                '/request_article/',
+                {
+                    'auth_key': 'test-internal-key',
+                    'openurl': quote(openurl, safe=''),
+                    'request_id': 'test-article',
+                    'username': 'test-reader',
+                },
+            )
 
         assert isinstance(response, HttpResponse)
+        self.assertNotIn('test-internal-key', '\n'.join(captured.output))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'].split(';')[0], 'application/json')
         self.assertEqual(json.loads(response.content), {'status': 'submission_successful', 'transaction_number': 67890})
@@ -349,3 +355,211 @@ class RequestFlowTests(SimpleTestCase):
             self.assertEqual(response.content, b'Bad Request')
             self.http_get.assert_not_called()
             self.http_post.assert_not_called()
+
+    def test_urlencoded_user_form_preserves_unicode_and_repeated_fields(self) -> None:
+        """
+        Checks UTF-8 aliases and ordinary HTTPS forms keep Unicode values and the last repeated value.
+        """
+        self.http_post.side_effect = None
+        self.http_post.return_value = json_reply({'UserName': 'test-reader'})
+        body = urlencode([*self.user_form.items(), ('first_name', 'Renée')])
+
+        for suffix in ('', '; charset=UTF-8', '; charset=utf-8', '; charset=utf8', '; charset=utf_8', '; charset=cp65001'):
+            with self.subTest(charset=suffix):
+                self.http_post.reset_mock()
+                response = self.client.post(
+                    '/create_user/',
+                    body,
+                    content_type='application/x-www-form-urlencoded' + suffix,
+                    secure=True,
+                    REMOTE_ADDR='127.0.0.1',
+                    HTTP_ORIGIN='https://legacy-client.example.invalid',
+                )
+
+                assert isinstance(response, HttpResponse)
+                self.assertEqual(response.status_code, 200)
+                result = json.loads(response.content)
+                self.assertEqual(result['request']['params']['first_name'], 'Renée')
+                self.assertEqual(result['request']['params']['last_name'], 'García')
+                self.assertEqual(result['response']['status_data'], {'status': 'Registered', 'status_code': 200})
+                self.assert_submission('Users', {'Username': 'test-reader', 'FirstName': 'Renée', 'LastName': 'García'})
+
+    def test_rejected_form_charset_returns_fixed_instructions(self) -> None:
+        """
+        Checks rejected form charsets receive safe instructions in either debug mode without external calls.
+        """
+        paths = ('/create_user/', '/v2/make_request/', '/request_article/')
+        charsets = ('ISO-8859-1', 'UTF-16', 'utf-8-sig')
+        body = urlencode(dict(self.user_form, private_note='private-form-value'))
+        for path, charset, debug in product(paths, charsets, (False, True)):
+            with self.subTest(path=path, charset=charset, debug=debug), override_settings(DEBUG=debug):
+                response = self.client.post(
+                    path,
+                    body.encode(),
+                    content_type='application/x-www-form-urlencoded; charset=' + charset,
+                    HTTP_AUTHORIZATION='Basic private-header-value',
+                )
+
+                assert isinstance(response, HttpResponse)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response['Content-Type'], 'text/plain; charset=utf-8')
+                self.assertEqual(
+                    response.content,
+                    b'Bad Request: Send application/x-www-form-urlencoded data encoded as UTF-8. '
+                    b'Omit the charset parameter from Content-Type, or use charset=UTF-8.',
+                )
+                self.assertEqual(response['X-Frame-Options'], 'SAMEORIGIN')
+                self.http_get.assert_not_called()
+                self.http_post.assert_not_called()
+
+    @override_settings(DEBUG=False)
+    def test_other_bad_requests_do_not_receive_encoding_instructions(self) -> None:
+        """
+        Checks unrelated exceptions and invalid hosts keep their generic response even with a bad charset.
+        """
+        with patch('illiad_app.views.CloudCreateUserHandler', side_effect=BadRequest('private-exception-detail')):
+            response = self.client.post(
+                '/create_user/',
+                b'private-form-value',
+                content_type='application/x-www-form-urlencoded; charset=ISO-8859-1',
+            )
+
+        assert isinstance(response, HttpResponse)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response['Content-Type'], 'text/html; charset=utf-8')
+        self.assertNotIn(b'private-exception-detail', response.content)
+        self.assertNotIn(b'charset', response.content)
+
+        with override_settings(ALLOWED_HOSTS=['testserver']):
+            response = self.client.post(
+                '/create_user/',
+                b'private-form-value',
+                content_type='application/x-www-form-urlencoded; charset=ISO-8859-1',
+                HTTP_HOST='unlisted.example.invalid',
+            )
+
+        assert isinstance(response, HttpResponse)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response['Content-Type'], 'text/html; charset=utf-8')
+        self.assertNotIn(b'charset', response.content)
+        self.http_get.assert_not_called()
+        self.http_post.assert_not_called()
+
+    def test_basic_auth_accepts_configured_unicode_and_colons(self) -> None:
+        """
+        Checks configured credentials survive Base64 prefixes, Unicode, and colons.
+        """
+        cases = [
+            ('j-reader', 'password'),
+            ('legacy:reader', 'password'),
+            ('reader', 'pass:word'),
+            ('legacy;reader', 'pass;word'),
+            ('Zoë', 'pässword'),
+        ]
+        for username, password in cases:
+            with (
+                self.subTest(username=username),
+                patch.multiple(settings_app, BASIC_AUTH_USER=username, BASIC_AUTH_PASSWORD=password),
+            ):
+                self.http_get.reset_mock()
+                self.http_get.side_effect = None
+                self.http_get.return_value = json_reply({'UserName': 'test-reader', 'Cleared': 'Yes'})
+                credentials = base64.b64encode(f'{username}:{password}'.encode()).decode('ascii')
+
+                with self.assertLogs('illiad_app.lib.basic_auth', level='DEBUG') as captured:
+                    response = self.client.get(
+                        '/check_user/', {'user': 'test-reader'}, HTTP_AUTHORIZATION='Basic ' + credentials
+                    )
+
+                assert isinstance(response, HttpResponse)
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(json.loads(response.content)['response']['status_data']['authenticated'])
+                self.http_get.assert_called_once()
+                self.http_post.assert_not_called()
+                log_output = '\n'.join(captured.output)
+                for private_value in (username, password, credentials):
+                    self.assertNotIn(private_value, log_output)
+
+    def test_basic_auth_preserves_legacy_base64_formatting(self) -> None:
+        """
+        Checks formatting tolerated by the old decoder still allows exactly matching credentials.
+        """
+        credentials = base64.b64encode(b'test-client:test-password').decode('ascii')
+        self.http_get.side_effect = None
+        self.http_get.return_value = json_reply({'UserName': 'test-reader', 'Cleared': 'Yes'})
+        headers = [
+            'Basic  ' + credentials,
+            'Basic    ' + credentials,
+            'Basic ' + credentials + ' \t',
+            'Basic ' + credentials[:8] + ' \t' + credentials[8:],
+            'Basic ' + credentials[:8] + '!' + credentials[8:],
+        ]
+        for header in headers:
+            with self.subTest(authorization=header):
+                self.http_get.reset_mock()
+                response = self.client.get(
+                    '/check_user/',
+                    {'user': 'test-reader'},
+                    HTTP_AUTHORIZATION=header,
+                )
+
+                assert isinstance(response, HttpResponse)
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(json.loads(response.content)['response']['status_data']['authenticated'])
+                self.http_get.assert_called_once()
+                self.http_post.assert_not_called()
+
+    def test_malformed_basic_auth_uses_existing_bad_request_response(self) -> None:
+        """
+        Checks undecodable values and incorrect credentials are rejected before any external request.
+        """
+        wrong_token = base64.b64encode(b'test-client:wrong-password').decode('ascii')
+        headers = [
+            '',
+            'Bearer unrelated-token',
+            'Basic ',
+            'Basic !not-base64!',
+            'Basic abc',
+            'Basic é',
+            'Basic ' + wrong_token[:8] + ' \t!' + wrong_token[8:],
+            'Basic ' + base64.b64encode(b'no-separator').decode('ascii'),
+            'Basic ' + base64.b64encode(b'\xff:password').decode('ascii'),
+        ]
+        for header in headers:
+            with self.subTest(authorization=header):
+                response = self.client.get('/check_user/', {'user': 'test-reader'}, HTTP_AUTHORIZATION=header)
+
+                assert isinstance(response, HttpResponse)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.content, b'Bad Request')
+                self.http_get.assert_not_called()
+                self.http_post.assert_not_called()
+
+    def test_root_and_missing_slash_redirects_keep_existing_targets(self) -> None:
+        """
+        Checks root and missing-slash GET redirects keep their status codes and query strings.
+        """
+        for path, status_code, target in [
+            ('/', 302, '/info/'),
+            ('/check_user?user=test-reader', 301, '/check_user/?user=test-reader'),
+        ]:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                assert isinstance(response, HttpResponse)
+                self.assertEqual(response.status_code, status_code)
+                self.assertEqual(response['Location'], target)
+                self.http_get.assert_not_called()
+                self.http_post.assert_not_called()
+
+    @override_settings(ALLOWED_HOSTS=['testserver'])
+    def test_unlisted_host_is_rejected_before_the_view(self) -> None:
+        """
+        Checks the configured host allowlist still rejects unknown hosts.
+        """
+        response = self.client.post('/create_user/', self.user_form, HTTP_HOST='unlisted.example.invalid')
+
+        assert isinstance(response, HttpResponse)
+        self.assertEqual(response.status_code, 400)
+        self.http_get.assert_not_called()
+        self.http_post.assert_not_called()
