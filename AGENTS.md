@@ -21,7 +21,7 @@ If other instruction files exist (Copilot, IDE rules, contributor docs) and conf
 ## Project basics
 
 - Primary language: Python
-- Target runtime: Python 3.12, with `requires-python = ">=3.12,<3.13"` in `pyproject.toml`
+- Target runtime: Python 3.12.16 or a later 3.12 patch, with `requires-python = ">=3.12.16,<3.13"` in `pyproject.toml`
 - Django version: stay within the 5.2 series and use the latest compatible patch release when updating dependencies.
 - Dependency / execution tool: `uv`
 - Project-root is the directory containing this file (and `.git/`, and `.gitignore`).
@@ -179,5 +179,5 @@ When implementing a change (especially from an issue/task):
 - `illiad_app/tests/`: mapping tests and client tests; some client tests contact external services when run directly through Django.
 - `.env.example`: dummy local settings; never put real operational values in tracked files.
 - `config/requirements.txt`: retained historical declarations. Use `pyproject.toml` and `uv.lock` for installation.
-- `pyproject.toml` declares Django, requests, PyMySQL, python-dotenv, and the explicit `certifi>=2026.10.19` requirement. Supporting dependencies and exact resolved versions are recorded in `uv.lock`. Preserve the Python 3.12 and Django 5.2 bounds and do not lower the certifi minimum without an explicit request.
+- `pyproject.toml` declares Django, requests, PyMySQL, python-dotenv, and the explicit `certifi>=2026.10.19` requirement. Supporting dependencies and exact resolved versions are recorded in `uv.lock`. Preserve the Python `>=3.12.16,<3.13` and Django 5.2 bounds and do not lower the certifi minimum without an explicit request.
 - Before finishing Python changes, run Ruff and Pylance or Pyright with `.venv` and the settings in `pyproject.toml`. Fix diagnostics in changed files without suppressing rules.
