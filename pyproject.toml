@@ -3,7 +3,7 @@ name = "illiad3-webservice"
 version = "0.0.0"
 description = "Django API for ILLiad user and item requests."
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12.16,<3.13"
 dependencies = [
     "Django>=5.2.19,<5.3",
     "PyMySQL[rsa]>=1.2.4,<2",

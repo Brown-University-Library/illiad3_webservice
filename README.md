@@ -33,7 +33,7 @@ uv sync --locked --group local
 cp -n .env.example ../.env
 ```
 
-If you already have a checkout, start in `illiad3_project` and run the last two commands. `../.env` is in the outer directory, outside the Git checkout; the copy preserves an existing file there. uv creates `.venv` with Python 3.12 and the dependencies recorded in `uv.lock`. The Python requirement is `>=3.12,<3.13`; the upgrade was checked with Python 3.12.16.
+If you already have a checkout, start in `illiad3_project` and run the last two commands. `../.env` is in the outer directory, outside the Git checkout; the copy preserves an existing file there. uv creates `.venv` with Python 3.12.16 or a later 3.12 patch and the dependencies recorded in `uv.lock`. The Python requirement is `>=3.12.16,<3.13`; the upgrade was checked with Python 3.12.16.
 
 The example settings use dummy credentials, local SQLite, and example URLs. They are sufficient for local startup and checks. Set values in the outer `.env` only when you need to connect the application to another service. Run commands from the repository root so relative database, static-file, and log paths resolve consistently.
 
@@ -99,4 +99,4 @@ Dependency cleanup:
 
 The `local`, `staging`, and `prod` dependency groups are explicit and currently empty: each uses the same application dependencies. Tests use Django and the standard library. There is no additional test framework or interactive-tool dependency.
 
-For later dependency updates, keep exact resolved versions in `uv.lock`, preserve the Python 3.12 and Django 5.2 bounds and the explicit certifi minimum, and validate each relevant environment group. Recheck the imports, configuration, and dependency relationships before removing a direct requirement.
+For later dependency updates, keep exact resolved versions in `uv.lock`, preserve the Python `>=3.12.16,<3.13` and Django 5.2 bounds and the explicit certifi minimum, and validate each relevant environment group. Recheck the imports, configuration, and dependency relationships before removing a direct requirement.
